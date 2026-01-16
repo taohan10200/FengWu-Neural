@@ -1,0 +1,55 @@
+============================================================
+示例：纯物理模型预报
+============================================================
+
+配置:
+  网格:  128 x 64 x 20
+  设备: cpu
+  时间步长: 60.0秒
+
+创建模型...
+  参数量: 0
+
+初始化状态（斜压波）...
+  温度范围: [-73.9, 287.4] K
+  风速范围: [0.0, 35.0] m/s
+
+运行预报（48小时）...
+Traceback (most recent call last):
+  File "/mnt/shared-storage-user/hantao-dispatch/NWP/neural_nwp/examples/example_pure_physics.py", line 102, in <module>
+    main()
+    ~~~~^^
+  File "/mnt/shared-storage-user/hantao-dispatch/NWP/neural_nwp/examples/example_pure_physics.py", line 59, in main
+    trajectory = model.rollout(
+        initial_state,
+        forecast_hours=48,
+        save_interval_hours=6
+    )
+  File "/mnt/shared-storage-user/hantao-dispatch/NWP/neural_nwp/models/atmospheric_model.py", line 85, in rollout
+    current_state = self.integrator(current_state, nsteps=1)
+  File "/home/hantao-dispatch/.local/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/hantao-dispatch/.local/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/mnt/shared-storage-user/hantao-dispatch/NWP/neural_nwp/integrators/time_integrator.py", line 51, in forward
+    current_state = self._step_rk4(current_state)
+  File "/mnt/shared-storage-user/hantao-dispatch/NWP/neural_nwp/integrators/time_integrator.py", line 85, in _step_rk4
+    k1 = self.core(state)
+  File "/home/hantao-dispatch/.local/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/hantao-dispatch/.local/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/mnt/shared-storage-user/hantao-dispatch/NWP/neural_nwp/core/dynamic_core.py", line 68, in forward
+    div = self.derivatives.divergence(state.u, state.v, state.w, dsigma)
+  File "/mnt/shared-storage-user/hantao-dispatch/NWP/neural_nwp/core/derivatives.py", line 96, in divergence
+    dudx, _ = self.horizontal_gradient(u)
+              ~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/mnt/shared-storage-user/hantao-dispatch/NWP/neural_nwp/core/derivatives.py", line 50, in horizontal_gradient
+    dy = self.grid.dy.unsqueeze(0).unsqueeze(-1)
+         ^^^^^^^^^
+  File "/home/hantao-dispatch/.local/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1949, in __getattr__
+    def __getattr__(self, name: str) -> Union[Tensor, "Module"]:
+    
+KeyboardInterrupt

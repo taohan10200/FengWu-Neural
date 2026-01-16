@@ -1,0 +1,178 @@
+"""
+训练混合模型的完整脚本
+"""
+
+import torch
+import torch.optim as optim
+from torch. utils.data import DataLoader
+import argparse
+from pathlib import Path
+import yaml
+
+from configs.model_config import ModelConfig
+from configs.era5_config import ERA5Config
+from models.atmospheric_model import AtmosphericModel
+from training.trainer import ModelTrainer
+from training.loss import CombinedLoss
+from training.metrics import get_all_metrics
+from data.era5_dataset import ERA5Dataset
+
+def load_config(config_file):
+    """加载YAML配置文件"""
+    with open(config_file, 'r') as f:
+        cfg = yaml.safe_load(f)
+    return cfg
+
+def main():
+    parser = argparse.ArgumentParser(description='训练混合大气模型')
+    parser.add_argument('--config', type=str, default='configs/train_config.yaml',
+                       help='配置文件路径')
+    parser.add_argument('--data_dir', type=str, required=True,
+                       help='ERA5 数据目录')
+    parser.add_argument('--output_dir', type=str, default='checkpoints',
+                       help='输出目录')
+    parser.add_argument('--resume', type=str, default=None,
+                       help='恢复训练的检查点')
+    parser.add_argument('--epochs', type=int, default=100,
+                       help='训练轮数')
+    parser.add_argument('--batch_size', type=int, default=4,
+                       help='批次大小')
+    parser.add_argument('--lr', type=float, default=1e-4,
+                       help='学习率')
+    parser.add_argument('--device', type=str, default='cuda',
+                       help='计算设备')
+    
+    args = parser.parse_args()
+    
+    # 创建输出目录
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    print("="*60)
+    print("混合大气模型训练")
+    print("="*60)
+    
+    # 配置
+    config = ModelConfig(
+        nx=128,
+        ny=64,
+        nz=20,
+        dt=300.0,
+        use_hybrid_model=True,
+        learnable_physics=True,
+        device=args.device
+    )
+    
+    era5_config = ERA5Config()
+    
+    print(f"\n配置:")
+    print(f"  模型网格: {config.nx} x {config.ny} x {config.nz}")
+    print(f"  数据目录: {args.data_dir}")
+    print(f"  批次大小: {args.batch_size}")
+    print(f"  学习率: {args.lr}")
+    print(f"  设备: {args. device}")
+    
+    # 数据集
+    print("\n加载数据集...")
+    dataset = ERA5Dataset(
+        data_dir=args.data_dir,
+        config=config,
+        era5_config=era5_config,
+        forecast_hours=24
+    )
+    
+    # 分割数据集
+    train_size = int(0.8 * len(dataset))
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        dataset, [train_size, val_size]
+    )
+    
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=args. batch_size,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True
+    )
+    
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args. batch_size,
+        shuffle=False,
+        num_workers=2
+    )
+    
+    print(f"  训练样本: {train_size}")
+    print(f"  验证样本: {val_size}")
+    
+    # 模型
+    print("\n创建模型...")
+    model = AtmosphericModel(config, use_hybrid=True)
+    print(f"  参数量: {sum(p.numel() for p in model.parameters()):,}")
+    
+    # 优化器和调度器
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-5)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    
+    # 损失和指标
+    loss_fn = CombinedLoss(config)
+    metrics = get_all_metrics()
+    
+    # 训练器
+    trainer = ModelTrainer(model, optimizer, device=args.device)
+    
+    # 恢复训练
+    start_epoch = 1
+    if args.resume:
+        print(f"\n从检查点恢复:  {args.resume}")
+        start_epoch = trainer.load_checkpoint(args.resume) + 1
+    
+    # 训练循环
+    print("\n开始训练...")
+    best_val_loss = float('inf')
+    
+    for epoch in range(start_epoch, args. epochs + 1):
+        print(f"\n{'='*60}")
+        print(f"Epoch {epoch}/{args.epochs}")
+        print(f"{'='*60}")
+        
+        # 训练
+        train_loss = trainer.train_epoch(train_loader, loss_fn, epoch)
+        
+        # 验证
+        val_results = trainer.evaluate(val_loader, loss_fn, metrics)
+        
+        # 学习率更新
+        scheduler.step()
+        
+        # 打印结果
+        print(f"\n结果:")
+        print(f"  训练损失: {train_loss:.6f}")
+        print(f"  验证损失: {val_results['loss']:.6f}")
+        print(f"  学习率: {optimizer.param_groups[0]['lr']:.2e}")
+        
+        # 保存最佳模型
+        if val_results['loss'] < best_val_loss:
+            best_val_loss = val_results['loss']
+            trainer.save_checkpoint(
+                output_dir / 'best_model.pt',
+                epoch=epoch,
+                val_loss=best_val_loss
+            )
+            print(f"  ✓ 保存最佳模型 (val_loss={best_val_loss:.6f})")
+        
+        # 定期保存
+        if epoch % 10 == 0:
+            trainer.save_checkpoint(
+                output_dir / f'checkpoint_epoch{epoch}.pt',
+                epoch=epoch,
+                val_loss=val_results['loss']
+            )
+    
+    print("\n✓ 训练完成！")
+    print(f"  最佳验证损失: {best_val_loss:.6f}")
+    print(f"  模型保存在: {output_dir}")
+
+if __name__ == "__main__":
+    main()

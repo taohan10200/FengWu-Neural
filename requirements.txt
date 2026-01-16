@@ -1,0 +1,12 @@
+torch>=2.0.0
+numpy>=1.21.0
+xarray>=2022.3.0
+netCDF4>=1.5.8
+scipy>=1.7.0
+matplotlib>=3.5.0
+cartopy>=0.20.0
+tqdm>=4.62.0
+tensorboard>=2.8.0
+pillow>=9.0.0
+h5py>=3.6.0
+pyyaml>=6.0
